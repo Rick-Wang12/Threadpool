@@ -35,7 +35,7 @@ static void            *_threadpool_thread(void *threadpool);
 static void             _threadpool_free(ThreadPool *pool);
 static struct JobQueue *_threadpool_create_job_queue(const ThreadPool * const threadpool, const int32_t queue_size);
 static void             _threadpool_destroy_job_queue(struct JobQueue * const queue);
-static Job             *_threadpool_thread_get_job_and_run(ThreadPool * thread_pool);
+static Job             *_threadpool_thread_get_job(ThreadPool * thread_pool);
 
 
 /*
@@ -49,8 +49,8 @@ static void *_threadpool_thread(void *threadpool)
     THREAD_POOL_LOG("started");
     while( !pool->mShutDown ) {
         //THREAD_POOL_LOG("pool->mShutDown: %d", pool->mShutDown);
-        // _threadpool_job_pop_front() will not return until it gets a jobs from queue or timeout
-        Job *job = _threadpool_thread_get_job_and_run(pool);
+        // _threadpool_thread_get_job() will not return until it gets a jobs from queue or timeout
+        Job *job = _threadpool_thread_get_job(pool);
         if ( !job )
         {
             THREAD_POOL_LOG("Time out or error during get job from queue");
@@ -316,11 +316,11 @@ int32_t threadpool_job_push_back(const ThreadPool * const threadpool, threadpool
 }
 
 /*
-* @brief Get a Job object from the head of queue and run it
+* @brief Get a Job object from the head of queue
 * @param[in] thread_pool     numbers of thread in the pool
-* @returns None
+* @returns pointer point to Job or NULL if error
 */
-static Job *_threadpool_thread_get_job_and_run(ThreadPool * thread_pool)
+static Job *_threadpool_thread_get_job(ThreadPool * thread_pool)
 {
     if ( !thread_pool )
     {
