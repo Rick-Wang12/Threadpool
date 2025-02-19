@@ -4,7 +4,6 @@
 
 #include "threadpool.h"
 
-#define LOCK_TIMEOUT_SEC   3
 typedef struct Job
 {
     void *mArgs;
