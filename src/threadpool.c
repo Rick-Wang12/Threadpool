@@ -337,7 +337,7 @@ static Job *_threadpool_thread_get_job(ThreadPool * thread_pool)
     pthread_mutex_lock(&job_queue->mQueueLock);
 
     // wait for new job
-    while ( (job_queue->mQueueTail - job_queue->mQueueHead) == 0 )
+    while ( (job_queue->mQueueTail - job_queue->mQueueHead) == 0 && !thread_pool->mShutDown)
     {
         THREAD_POOL_LOG("Wait queue become readable...");
         struct timespec t;
