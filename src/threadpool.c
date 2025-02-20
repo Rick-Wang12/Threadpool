@@ -52,7 +52,7 @@ static void *_threadpool_thread(void *threadpool)
         Job *job = _threadpool_thread_get_job(pool);
         if ( !job )
         {
-            THREAD_POOL_LOG("Time out or error during get job from queue");
+            THREAD_POOL_LOG("Time out, error or shutdown during get job from queue");
             continue;
         }
         //THREAD_POOL_LOG("thread got a job from job queue");
