@@ -20,7 +20,7 @@ typedef void (*threadpool_job_func_t)(void * args);
 
 ThreadPool *threadpool_create(const int32_t thread_count, const int32_t job_queue_size);
 void        threadpool_destroy(ThreadPool *pool);
-int32_t     threadpool_job_push_back(const ThreadPool * const threadpool, 
+int32_t     threadpool_job_push_back(ThreadPool * const threadpool, 
                                      threadpool_job_func_t func, 
                                      const void * const args
                                     );

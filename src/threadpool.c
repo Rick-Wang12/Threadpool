@@ -26,6 +26,9 @@ struct ThreadPool
 {
     int32_t mNumOfThread;               // number of threads in the threadpool
     pthread_t *mThreads;                // pointer to threads
+    volatile int32_t mJobCnt;
+    pthread_mutex_t mWait;         
+    pthread_cond_t mAllIdle; 
     volatile int32_t mShutDown;         // if shut down threadpool
     JobQueue *mJobQueue;                // job queue
 };
@@ -59,6 +62,14 @@ static void *_threadpool_thread(void *threadpool)
         (*job->mFunc)(job->mArgs);
         free(job);
         //THREAD_POOL_LOG("job done")
+        pthread_mutex_lock(&(pool->mWait));
+        pool->mJobCnt--;
+        if ( pool->mJobCnt == 0 )
+        {
+            pthread_cond_signal(&(pool->mAllIdle));
+        }
+        pthread_mutex_unlock(&(pool->mWait));
+
     }
     THREAD_POOL_LOG("pool->mShutDown: %d", pool->mShutDown);
     THREAD_POOL_LOG("exit");
@@ -198,7 +209,8 @@ static void _threadpool_free(ThreadPool *threadpool)
     {
         _threadpool_destroy_job_queue(threadpool->mJobQueue);
     }
-
+    pthread_mutex_destroy(&(threadpool->mWait));
+    pthread_cond_destroy(&(threadpool->mAllIdle));
     free(threadpool);    
 }
 
@@ -233,7 +245,8 @@ ThreadPool *threadpool_create(const int32_t thread_count, const int32_t job_queu
         _threadpool_free(pool);
         return NULL;
     }
-    
+    pthread_mutex_init(&(pool->mWait), NULL);
+    pthread_cond_init(&(pool->mAllIdle), NULL);
     /* Start worker threads */
     for( int32_t i = 0; i < thread_count; i++ ) {
         if( pthread_create(&(pool->mThreads[i]), NULL, _threadpool_thread, (void *) pool) != 0 ) {
@@ -252,7 +265,7 @@ ThreadPool *threadpool_create(const int32_t thread_count, const int32_t job_queu
 * @param[in] args           a pointer point to the arguments for threadpool_job_func_t function
 * @returns THREADPOOL_ERROR, THREADPOOL_SUCCESS
 */
-int32_t threadpool_job_push_back(const ThreadPool * const threadpool, threadpool_job_func_t func, const void * const args)
+int32_t threadpool_job_push_back(ThreadPool * const threadpool, threadpool_job_func_t func, const void * const args)
 {
     if ( !threadpool ) 
     {
@@ -298,6 +311,9 @@ int32_t threadpool_job_push_back(const ThreadPool * const threadpool, threadpool
     job_queue->mJobs[job_queue->mQueueTail].mArgs = (void *) args;
     job_queue->mQueueTail++;
     job_queue->mQueueTail %= job_queue->mQueueSize;
+    pthread_mutex_lock(&(threadpool->mWait));
+    threadpool->mJobCnt++;
+    pthread_mutex_unlock(&(threadpool->mWait));
 
     // signal to all idle threads in the pools
     if ( pthread_cond_signal(&(job_queue->mReadable)) != 0 ) 
@@ -313,6 +329,19 @@ int32_t threadpool_job_push_back(const ThreadPool * const threadpool, threadpool
     }
     return THREADPOOL_SUCCESS;
 }
+
+void threadpool_wait(ThreadPool * const threadpool)
+{
+    pthread_mutex_lock(&(threadpool->mWait));
+    while ( threadpool->mJobCnt != 0 )
+    {
+        pthread_cond_wait(&(threadpool->mAllIdle), &(threadpool->mWait));
+        continue;
+    }
+    pthread_mutex_unlock(&(threadpool->mWait));
+    return;
+}
+
 
 /*
 * @brief Get a Job object from the head of queue
@@ -340,9 +369,7 @@ static Job *_threadpool_thread_get_job(ThreadPool * thread_pool)
     while ( (job_queue->mQueueTail - job_queue->mQueueHead) == 0 && !thread_pool->mShutDown)
     {
         THREAD_POOL_LOG("Wait queue become readable...");
-        struct timespec t;
-        threadpool_get_lock_timout_timespec(&t);
-        if ( pthread_cond_timedwait(&job_queue->mReadable, &job_queue->mQueueLock, &t) < 0 )
+        if ( pthread_cond_wait(&job_queue->mReadable, &job_queue->mQueueLock) < 0 )
         {
             THREAD_POOL_LOG("pthread_cond_timedwait fail, errno: %d", errno);
             return NULL;
